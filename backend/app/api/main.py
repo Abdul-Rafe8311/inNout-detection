@@ -10,8 +10,9 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from ..config import Settings, get_settings
 from ..core.usb_monitor import UsbMonitor
@@ -73,9 +74,29 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="AEGIS USB", version="0.2.0", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def refuse_cross_site_writes(request: Request, call_next):  # type: ignore[no-untyped-def]
+    """The API has no login, so state-changing requests from a foreign web page are refused.
+
+    CORS only stops a page from *reading* responses; a simple cross-origin POST would still
+    run. Browsers always send ``Origin`` on such requests, so we reject any that is not ours.
+    Requests with no Origin header (curl, tests, the Vite dev proxy's server side) pass.
+    """
+    origin = request.headers.get("origin")
+    if (
+        request.method not in ("GET", "HEAD", "OPTIONS")
+        and origin
+        and origin not in get_settings().allowed_origins
+    ):
+        return JSONResponse({"detail": "Cross-origin request refused"}, status_code=403)
+    return await call_next(request)
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=list(get_settings().allowed_origins),
     allow_methods=["*"],
     allow_headers=["*"],
 )

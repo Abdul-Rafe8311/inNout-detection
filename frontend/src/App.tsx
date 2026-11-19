@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { verifyAudit } from "./api";
+import AboutPanel from "./components/AboutPanel";
 import AuditChainBadge from "./components/AuditChainBadge";
 import EntropyChart from "./components/EntropyChart";
 import HeaderStatus from "./components/HeaderStatus";
@@ -12,11 +13,12 @@ import ThreatLogTable from "./components/ThreatLogTable";
 import VaultPanel from "./components/VaultPanel";
 import { useAegisSocket } from "./hooks/useAegisSocket";
 
-type Tab = "live" | "intel" | "integrity";
+type Tab = "live" | "intel" | "integrity" | "about";
 const TABS: { id: Tab; label: string }[] = [
   { id: "live", label: "Live" },
   { id: "intel", label: "Intel" },
   { id: "integrity", label: "Integrity" },
+  { id: "about", label: "About" },
 ];
 
 export default function App() {
@@ -77,6 +79,7 @@ export default function App() {
           </>
         )}
         {tab === "intel" && <IntelPanel />}
+        {tab === "about" && <AboutPanel />}
         {tab === "integrity" && (
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="space-y-4">

@@ -269,3 +269,17 @@ export interface RestoreResult {
 }
 
 export type SigAlgorithm = "rsa-pss" | "dsa" | "ed25519";
+
+export interface CourseRow {
+  week: string;
+  topic: string;
+  feature: string;
+  files: string[];
+  cia: string;
+  status: "implemented" | "partial" | "not_built";
+  note: string | null;
+}
+
+export interface CourseMapResponse {
+  rows: CourseRow[];
+}

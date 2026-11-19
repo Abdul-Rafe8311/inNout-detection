@@ -9,16 +9,19 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request, WebSocket
+from fastapi.responses import PlainTextResponse
 
 from ..config import get_settings
 from ..core.usb_monitor import DriveInfo
 from ..core.vault import Vault, VaultError
+from ..course_map import ROWS, read_public_file
 from ..crypto.keystore import ALGORITHMS, STATION_NAME
 from ..crypto.signer import sign_report, verify_report
 from ..engine import yara_scanner
 from .schemas import (
     AuditStatusEvent,
     AuditVerifyResult,
+    CourseMapResponse,
     EjectResponse,
     HealthResponse,
     IntelLookupRequest,
@@ -330,7 +333,27 @@ async def quarantine_delete_original(request: Request, entry_id: str) -> Quarant
     return _entry(vault.update(entry_id, original_deleted=True))
 
 
+# ---- about tab ------------------------------------------------------------------------------
+@router.get("/api/course-map", response_model=CourseMapResponse)
+async def course_map() -> CourseMapResponse:
+    """Course week -> feature table shown in the About tab."""
+    return CourseMapResponse(rows=ROWS)
+
+
+@router.get("/api/files/{path:path}", response_class=PlainTextResponse)
+async def public_file(path: str) -> PlainTextResponse:
+    """Read-only text of a file linked from the About tab. Strict allowlist, nothing else."""
+    text = read_public_file(path)
+    if text is None:
+        raise HTTPException(404, "Not available")
+    return PlainTextResponse(text, headers={"X-Content-Type-Options": "nosniff"})
+
+
 @router.websocket("/ws")
 async def ws_endpoint(ws: WebSocket) -> None:
     """Live telemetry: SNAPSHOT first, then events."""
+    origin = ws.headers.get("origin")
+    if origin and origin not in get_settings().allowed_origins:
+        await ws.close(code=1008)  # policy violation: cross-site WebSocket hijacking attempt
+        return
     await serve_client(ws, ws.app.state.hub)

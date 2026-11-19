@@ -1,5 +1,6 @@
 import type {
   AuditVerifyResult,
+  CourseMapResponse,
   EjectResponse,
   HealthResponse,
   IntelLookupResponse,
@@ -66,3 +67,7 @@ export const restoreQuarantined = (id: string) =>
   request<RestoreResult>("POST", `/api/quarantine/${id}/restore`);
 export const deleteOriginal = (id: string) =>
   request<QuarantineEntry>("POST", `/api/quarantine/${id}/delete-original`);
+
+export const getCourseMap = () => request<CourseMapResponse>("GET", "/api/course-map");
+/** Same-origin, read-only text of an allow-listed repo file (works offline). */
+export const fileUrl = (path: string) => `/api/files/${path.split("/").map(encodeURIComponent).join("/")}`;

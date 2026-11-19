@@ -10,6 +10,7 @@ export default defineConfig(({ mode }) => {
     plugins: [react(), tailwindcss()],
     server: {
       port: 5173,
+      strictPort: true, // the API only accepts the 5173 origin; never drift to another port
       proxy: {
         "/api": `http://127.0.0.1:${port}`,
         "/ws": { target: `ws://127.0.0.1:${port}`, ws: true },

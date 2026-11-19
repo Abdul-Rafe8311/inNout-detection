@@ -8,6 +8,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
+from ..course_map import CourseRow
 from ..engine.intel.base import IntelVerdict
 
 TierName = Literal["SAFE", "SUSPICIOUS", "CRITICAL"]
@@ -257,6 +258,10 @@ class QuarantineEntry(BaseModel):
     original_deleted: bool
 
 
+class CourseMapResponse(BaseModel):
+    rows: list[CourseRow]
+
+
 class RestoreResult(BaseModel):
     id: str
     restored_path: str
@@ -271,5 +276,5 @@ CONTRACT_MODELS: list[type[BaseModel]] = [
     HealthResponse, SimulateResponse, EjectResponse, IntelVerdict, FileEnrichedEvent,
     IntelLookupRequest, IntelLookupResponse, RecentMalware, AuditVerifyResult, TamperResponse,
     UndoTamperResponse, SignedReport, VerifyRequest, VerifyResult, QuarantineEntry,
-    RestoreResult,
+    RestoreResult, CourseRow, CourseMapResponse,
 ]

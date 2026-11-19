@@ -162,9 +162,12 @@ class IntelService:
             except Exception:  # noqa: BLE001 - one bad lookup must not kill the worker
                 log.exception("enrichment failed")
 
-    async def _enrich(self, event: dict[str, Any]) -> None:
-        from ...api.schemas import FileEnrichedEvent  # local: avoids an import cycle
+    async def lookup_for_event(self, event: dict[str, Any]) -> tuple[list[IntelVerdict], bool]:
+        """The exact lookups the live pipeline does for one scanned file.
 
+        Returns ``(verdicts, worth_network)``. ``warm_cache`` calls this too, so a warmed cache
+        holds precisely the keys the live demo will ask for.
+        """
         worth = worth_network_lookup(event)
         # A known-good hit only short-circuits the paid lookups for entropy-only alerts, the
         # false positives it exists to clear. Everything else keeps going: NSRL also lists
@@ -176,6 +179,12 @@ class IntelService:
             event["sha256"], network=worth, stop_on_known_good=fp_candidate,
             vt_priority=event["tier"] != "SAFE",
         )
+        return verdicts, worth
+
+    async def _enrich(self, event: dict[str, Any]) -> None:
+        from ...api.schemas import FileEnrichedEvent  # local: avoids an import cycle
+
+        verdicts, worth = await self.lookup_for_event(event)
         interesting = any(v.status not in ("not_found", "skipped") for v in verdicts)
         network_answered = any(v.provider != "local_ioc" for v in verdicts)
         # Quiet by design: offline "not found" results are noise, so emit only when a network
