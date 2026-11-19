@@ -17,3 +17,14 @@ body {
   color: #e2e8f0;
   font-family: var(--font-sans);
 }
+
+@keyframes aegis-flash {
+  0%, 100% { opacity: 1; }
+  25%, 75% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+.aegis-flash { animation: aegis-flash 0.9s ease-in-out 2; }
+
+@media (prefers-reduced-motion: reduce) {
+  .aegis-flash { animation: none; }
+}
