@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { eject, SIM_DRIVE, simulate } from "../api";
-import type { DriveState } from "../types/telemetry";
+import type { AuditVerifyResult, DriveState } from "../types/telemetry";
+import { ChainChip } from "./AuditChainBadge";
 import { formatBytes } from "../lib/tier";
 
 interface Props {
   connected: boolean;
   drives: DriveState[];
+  audit: AuditVerifyResult | null;
 }
 
 function DrivePill({ d }: { d: DriveState }) {
@@ -33,7 +35,7 @@ function DrivePill({ d }: { d: DriveState }) {
   );
 }
 
-export default function HeaderStatus({ connected, drives }: Props) {
+export default function HeaderStatus({ connected, drives, audit }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const simDrive = drives.find((d) => d.drive === SIM_DRIVE);
@@ -72,7 +74,8 @@ export default function HeaderStatus({ connected, drives }: Props) {
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <ChainChip audit={audit} />
           {error && <span className="max-w-64 text-xs text-critical" role="alert">{error}</span>}
           <button type="button" disabled={busy || scanning || !connected}
             onClick={() => run(simulate)}

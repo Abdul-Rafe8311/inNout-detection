@@ -1,14 +1,33 @@
-import type { EjectResponse, SimulateResponse } from "./types/telemetry";
+import type {
+  AuditVerifyResult,
+  EjectResponse,
+  HealthResponse,
+  IntelLookupResponse,
+  QuarantineEntry,
+  RecentMalware,
+  RestoreResult,
+  SigAlgorithm,
+  SignedReport,
+  SimulateResponse,
+  TamperResponse,
+  UndoTamperResponse,
+  VerifyResult,
+} from "./types/telemetry";
 
-async function post<T>(path: string): Promise<T> {
-  const res = await fetch(path, { method: "POST" });
+async function request<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method,
+    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
   if (!res.ok) {
     let detail = `${res.status} ${res.statusText}`;
     try {
-      const body = (await res.json()) as { detail?: string };
-      if (typeof body.detail === "string") detail = body.detail;
+      const data = (await res.json()) as { detail?: unknown };
+      if (typeof data.detail === "string") detail = data.detail;
+      else if (Array.isArray(data.detail)) detail = "Invalid input";
     } catch {
-      /* non-JSON error body: keep status text */
+      /* non-JSON error body: keep the status text */
     }
     throw new Error(detail);
   }
@@ -16,5 +35,34 @@ async function post<T>(path: string): Promise<T> {
 }
 
 export const SIM_DRIVE = "Z:\\";
-export const simulate = () => post<SimulateResponse>("/api/demo/simulate");
-export const eject = () => post<EjectResponse>(`/api/demo/eject?drive=${encodeURIComponent(SIM_DRIVE)}`);
+
+export const simulate = () => request<SimulateResponse>("POST", "/api/demo/simulate");
+export const eject = () =>
+  request<EjectResponse>("POST", `/api/demo/eject?drive=${encodeURIComponent(SIM_DRIVE)}`);
+export const getHealth = () => request<HealthResponse>("GET", "/api/health");
+
+export const lookupHash = (hash: string) =>
+  request<IntelLookupResponse>("POST", "/api/intel/lookup", { hash });
+export const recentMalware = () => request<RecentMalware[]>("GET", "/api/intel/recent?limit=15");
+
+export const verifyAudit = () => request<AuditVerifyResult>("GET", "/api/audit/verify");
+export const tamper = () => request<TamperResponse>("POST", "/api/demo/tamper");
+export const undoTamper = () => request<UndoTamperResponse>("POST", "/api/demo/tamper/undo");
+
+export const signReport = (scanId: string, alg: SigAlgorithm) =>
+  request<SignedReport>("POST", `/api/reports/${encodeURIComponent(scanId)}/sign?alg=${alg}`);
+export const verifyReport = (signed: SignedReport) =>
+  request<VerifyResult>("POST", "/api/reports/verify", {
+    report: signed.report,
+    signature_b64: signed.signature_b64,
+    algorithm: signed.algorithm,
+    public_key_pem: signed.public_key_pem,
+  });
+
+export const quarantine = (eventId: string) =>
+  request<QuarantineEntry>("POST", `/api/quarantine/${eventId}`);
+export const quarantineList = () => request<QuarantineEntry[]>("GET", "/api/quarantine");
+export const restoreQuarantined = (id: string) =>
+  request<RestoreResult>("POST", `/api/quarantine/${id}/restore`);
+export const deleteOriginal = (id: string) =>
+  request<QuarantineEntry>("POST", `/api/quarantine/${id}/delete-original`);

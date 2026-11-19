@@ -8,6 +8,10 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
+from ..engine.intel.base import IntelVerdict
+
+TierName = Literal["SAFE", "SUSPICIOUS", "CRITICAL"]
+
 
 def _new_id() -> str:
     return uuid.uuid4().hex
@@ -102,6 +106,25 @@ class FileScannedEvent(_Event):
     chain_hash: str | None = None
 
 
+class FileEnrichedEvent(_Event):
+    """Threat-intel result that updates an existing FILE_SCANNED row."""
+
+    type: Literal["FILE_ENRICHED"] = "FILE_ENRICHED"
+    scan_id: str
+    drive: str
+    file_event_id: str
+    sha256: str
+    verdicts: list[IntelVerdict]
+    known_good: bool
+    previous_tier: TierName
+    tier: TierName
+    likelihood: int
+    impact: int
+    risk_score: int
+    reasons: list[str]
+    mitre: list[str]
+
+
 class ScanCompleteEvent(_Event):
     type: Literal["SCAN_COMPLETE"] = "SCAN_COMPLETE"
     scan_id: str
@@ -138,6 +161,7 @@ Event = Annotated[
     | UsbDisconnectedEvent
     | ScanProgressEvent
     | FileScannedEvent
+    | FileEnrichedEvent
     | ScanCompleteEvent
     | AuditStatusEvent
     | HeartbeatEvent
@@ -163,9 +187,89 @@ class EjectResponse(BaseModel):
     ejected: bool
 
 
+class IntelLookupRequest(BaseModel):
+    hash: str = Field(pattern=r"^[0-9a-fA-F]{64}$", description="SHA-256 (hash-only lookups)")
+
+
+class IntelLookupResponse(BaseModel):
+    sha256: str
+    verdicts: list[IntelVerdict]
+    malicious: bool
+    known_good: bool
+
+
+class RecentMalware(BaseModel):
+    sha256: str
+    file_name: str | None
+    file_type: str | None
+    signature: str | None
+    first_seen: str | None
+
+
+class AuditVerifyResult(BaseModel):
+    valid: bool
+    length: int
+    broken_at: int | None
+
+
+class TamperResponse(BaseModel):
+    tampered_index: int
+
+
+class UndoTamperResponse(BaseModel):
+    restored: bool
+
+
+class SignedReport(BaseModel):
+    report: dict[str, Any]
+    signature_b64: str
+    algorithm: str
+    public_key_pem: str
+    certificate_pem: str
+
+
+class VerifyRequest(BaseModel):
+    report: dict[str, Any]
+    signature_b64: str
+    algorithm: str
+    public_key_pem: str
+
+
+class VerifyResult(BaseModel):
+    valid: bool
+    reason: str
+    algorithm: str
+    key_fingerprint_sha256: str | None
+    matches_station_key: bool
+
+
+class QuarantineEntry(BaseModel):
+    id: str
+    filename: str
+    original_path: str
+    size_bytes: int
+    sha256: str
+    tier: str
+    scan_id: str
+    drive: str
+    simulated: bool
+    quarantined_at: str
+    original_deleted: bool
+
+
+class RestoreResult(BaseModel):
+    id: str
+    restored_path: str
+    sha256: str
+    verified: bool
+
+
 # Every model mirrored in telemetry.ts (used by the contract test).
 CONTRACT_MODELS: list[type[BaseModel]] = [
     Stats, DriveState, UsbConnectedEvent, UsbDisconnectedEvent, ScanProgressEvent,
     FileScannedEvent, ScanCompleteEvent, AuditStatusEvent, HeartbeatEvent, SnapshotEvent,
-    HealthResponse, SimulateResponse, EjectResponse,
+    HealthResponse, SimulateResponse, EjectResponse, IntelVerdict, FileEnrichedEvent,
+    IntelLookupRequest, IntelLookupResponse, RecentMalware, AuditVerifyResult, TamperResponse,
+    UndoTamperResponse, SignedReport, VerifyRequest, VerifyResult, QuarantineEntry,
+    RestoreResult,
 ]

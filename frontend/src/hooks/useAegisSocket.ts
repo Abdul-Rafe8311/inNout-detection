@@ -1,10 +1,16 @@
 import { useEffect, useReducer } from "react";
 import type {
+  AuditVerifyResult,
   DriveState,
+  FileEnrichedEvent,
   FileScannedEvent,
+  IntelVerdict,
   Stats,
   TelemetryEvent,
 } from "../types/telemetry";
+
+/** A scanned file plus whatever threat intel has been learned about it since. */
+export type Row = FileScannedEvent & { intel?: IntelVerdict[]; known_good?: boolean };
 
 export type FeedTone = "safe" | "suspicious" | "critical" | "info";
 export interface FeedLine {
@@ -26,7 +32,8 @@ export interface AegisState {
   connected: boolean;
   stats: Stats;
   drives: Record<string, DriveState>;
-  files: FileScannedEvent[]; // oldest -> newest
+  files: Row[]; // oldest -> newest
+  audit: AuditVerifyResult | null;
   feed: FeedLine[];
   toast: Toast | null;
   alert: CriticalAlert | null;
@@ -41,6 +48,7 @@ export const initialState: AegisState = {
   stats: ZERO_STATS,
   drives: {},
   files: [],
+  audit: null,
   feed: [],
   toast: null,
   alert: null,
@@ -92,15 +100,31 @@ function lineFor(e: TelemetryEvent): FeedLine | null {
   }
 }
 
+function mergeEnrichment(files: Row[], e: FileEnrichedEvent): Row[] {
+  const i = files.findIndex((f) => f.event_id === e.file_event_id);
+  if (i < 0) return files;
+  const next = files.slice();
+  next[i] = {
+    ...files[i], tier: e.tier, likelihood: e.likelihood, impact: e.impact,
+    risk_score: e.risk_score, reasons: e.reasons, mitre: e.mitre, intel: e.verdicts,
+    known_good: e.known_good,
+  };
+  return next;
+}
+
 function applySnapshot(e: Extract<TelemetryEvent, { type: "SNAPSHOT" }>): AegisState {
   const events: TelemetryEvent[] = [];
   for (const raw of e.events) if (isTelemetryEvent(raw)) events.push(raw);
-  const files = events.filter((x): x is FileScannedEvent => x.type === "FILE_SCANNED");
+  let files: Row[] = [];
+  for (const x of events) {
+    if (x.type === "FILE_SCANNED") files.push(x);
+    else if (x.type === "FILE_ENRICHED") files = mergeEnrichment(files, x);
+  }
   const feed = events.map(lineFor).filter((l): l is FeedLine => l !== null);
   const drives: Record<string, DriveState> = {};
   for (const d of e.drives) drives[d.drive] = d;
   return {
-    connected: true, stats: e.stats, drives,
+    connected: true, stats: e.stats, drives, audit: null,
     files: files.slice(-MAX_FILES), feed: feed.slice(-MAX_FEED), toast: null, alert: null,
   };
 }
@@ -146,6 +170,33 @@ function reduceEvent(s: AegisState, e: TelemetryEvent): AegisState {
         alert: e.tier === "CRITICAL" ? { id: e.event_id, filename: e.filename } : s.alert,
       };
     }
+    case "FILE_ENRICHED": {
+      const row = s.files.find((f) => f.event_id === e.file_event_id);
+      const changed = e.previous_tier !== e.tier;
+      const stats = changed
+        ? {
+            ...s.stats,
+            [e.previous_tier.toLowerCase()]: Math.max(0, s.stats[e.previous_tier.toLowerCase() as "safe"] - 1),
+            [e.tier.toLowerCase()]: s.stats[e.tier.toLowerCase() as "safe"] + 1,
+          }
+        : s.stats;
+      const top = e.verdicts.find((v) => v.status === "malicious") ?? e.verdicts.find((v) => v.status === "known_good");
+      const line: FeedLine | null =
+        changed || top
+          ? {
+              id: e.event_id, ts: e.timestamp,
+              tone: e.tier === "CRITICAL" ? "critical" : e.tier === "SAFE" ? "safe" : "info",
+              text: `INTEL      ${row?.filename ?? e.sha256.slice(0, 12)}  ${changed ? `${e.previous_tier} -> ${e.tier}  ` : ""}${top ? `${top.provider}: ${top.status}` : ""}`,
+            }
+          : null;
+      return {
+        ...s, stats, files: mergeEnrichment(s.files, e),
+        feed: line ? [...s.feed, line].slice(-MAX_FEED) : s.feed,
+        alert: changed && e.tier === "CRITICAL" ? { id: e.event_id, filename: row?.filename ?? "file" } : s.alert,
+      };
+    }
+    case "AUDIT_STATUS":
+      return { ...s, audit: { valid: e.valid, length: e.length, broken_at: e.broken_at } };
     case "SCAN_COMPLETE": {
       const d = s.drives[e.drive];
       const drives =
@@ -159,7 +210,7 @@ function reduceEvent(s: AegisState, e: TelemetryEvent): AegisState {
       };
     }
     default:
-      return s; // HEARTBEAT, AUDIT_STATUS, FILE_ENRICHED: handled by later phases
+      return s; // HEARTBEAT needs no state
   }
 }
 

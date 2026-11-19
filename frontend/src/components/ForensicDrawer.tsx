@@ -1,13 +1,17 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { FileScannedEvent } from "../types/telemetry";
+import { deleteOriginal, quarantine } from "../api";
+import type { Row } from "../hooks/useAegisSocket";
+import type { QuarantineEntry } from "../types/telemetry";
 import { clock, formatBytes, TIER_BADGE } from "../lib/tier";
+import SignReport from "./SignReport";
+import VerdictList from "./VerdictList";
 
 function extOf(name: string): string {
   const i = name.lastIndexOf(".");
   return i > 0 ? name.slice(i + 1).toLowerCase() : "(none)";
 }
 
-function entropyNote(f: FileScannedEvent): string {
+function entropyNote(f: Row): string {
   if (f.scan_status === "PARTIAL") return "Not measured: file exceeds the size cap (header and name checks only).";
   if (f.entropy <= 7.2) return "Below the 7.2 threshold: typical of text, code or structured data.";
   if (f.entropy_exempt) return "High, but expected: compressed format whose extension matches its header.";
@@ -25,7 +29,65 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-export default function ForensicDrawer({ file, onClose }: { file: FileScannedEvent; onClose: () => void }) {
+function QuarantineActions({ file, onChange }: { file: Row; onChange: () => void }) {
+  const [entry, setEntry] = useState<QuarantineEntry | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = async (fn: () => Promise<void>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await fn();
+      onChange();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Request failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const simulated = file.drive === "Z:\\";
+
+  return (
+    <div className="space-y-2">
+      {!entry && (
+        <button type="button" disabled={busy || !file.sha256} onClick={() => run(async () => setEntry(await quarantine(file.event_id)))}
+          className="rounded border border-suspicious/50 bg-suspicious/10 px-3 py-1.5 text-sm text-suspicious hover:bg-suspicious/20 disabled:opacity-40">
+          Quarantine (encrypted copy)
+        </button>
+      )}
+      {entry && (
+        <div className="rounded border border-line bg-bg p-3 text-sm">
+          <p className="text-safe">Copied into the AES-256-GCM vault ✓</p>
+          <p className="mt-1 text-xs text-slate-400">The original is still on the drive. Vault id <code className="font-mono">{entry.id.slice(0, 8)}</code>.</p>
+          {entry.original_deleted ? (
+            <p className="mt-2 text-xs text-suspicious">The original was deleted from the drive.</p>
+          ) : !confirming ? (
+            <button type="button" disabled={simulated || busy} onClick={() => setConfirming(true)}
+              title={simulated ? "The simulated demo drive is protected" : undefined}
+              className="mt-2 rounded border border-critical/40 px-2.5 py-1 text-xs text-critical hover:bg-critical/10 disabled:cursor-not-allowed disabled:opacity-40">
+              Delete original from drive…
+            </button>
+          ) : (
+            <div className="mt-2 rounded border border-critical/50 p-2 text-xs">
+              <p className="break-all text-slate-200">Permanently delete <b>{file.file}</b>? This cannot be undone.</p>
+              <div className="mt-2 flex gap-2">
+                <button type="button" disabled={busy} onClick={() => run(async () => { setEntry(await deleteOriginal(entry.id)); setConfirming(false); })}
+                  className="rounded bg-critical px-2.5 py-1 font-semibold text-white disabled:opacity-40">Yes, delete it</button>
+                <button type="button" onClick={() => setConfirming(false)} className="rounded border border-line px-2.5 py-1 text-slate-300">Cancel</button>
+              </div>
+            </div>
+          )}
+          {simulated && !entry.original_deleted && <p className="mt-1 text-[11px] text-slate-500">Deleting is disabled for the simulated demo drive.</p>}
+        </div>
+      )}
+      {error && <p className="text-xs text-critical" role="alert">{error}</p>}
+    </div>
+  );
+}
+
+export default function ForensicDrawer({ file, onClose, onVaultChange }: { file: Row; onClose: () => void; onVaultChange: () => void }) {
   const [copied, setCopied] = useState(false);
   const closeBtn = useRef<HTMLButtonElement>(null);
 
@@ -74,6 +136,15 @@ export default function ForensicDrawer({ file, onClose }: { file: FileScannedEve
         <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-slate-200">
           {file.reasons.map((r) => <li key={r}>{r}</li>)}
         </ul>
+
+        {file.intel && file.intel.length > 0 && (
+          <>
+            <h3 className="mt-5 text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Threat intel{file.known_good && <span className="ml-2 font-normal normal-case text-safe">known file</span>}
+            </h3>
+            <VerdictList verdicts={file.intel} />
+          </>
+        )}
 
         <dl className="mt-5">
           <Row label="SHA-256">
@@ -125,6 +196,15 @@ export default function ForensicDrawer({ file, onClose }: { file: FileScannedEve
             <Row label="Audit chain">#{file.chain_index} <code className="break-all font-mono text-xs text-slate-400">{file.chain_hash}</code></Row>
           )}
         </dl>
+
+        <h3 className="mt-6 text-xs font-semibold uppercase tracking-wider text-slate-400">Actions</h3>
+        <div className="mt-2 space-y-5">
+          <QuarantineActions file={file} onChange={onVaultChange} />
+          <div>
+            <p className="mb-2 text-xs text-slate-400">Sign the report for this whole scan session:</p>
+            <SignReport scanId={file.scan_id} />
+          </div>
+        </div>
       </aside>
     </div>
   );

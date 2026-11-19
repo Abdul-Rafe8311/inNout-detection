@@ -11,11 +11,13 @@ import asyncio
 import json
 import logging
 from collections import deque
+from collections.abc import Callable
 from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
 
 from ..core.usb_monitor import DriveInfo
+from ..crypto.audit_chain import AuditChain
 from ..engine.analyzer import ScanResult
 from .schemas import (
     DriveState,
@@ -65,7 +67,9 @@ class Client:
 class Hub:
     """Event bus + in-memory state (history ring buffer, stats, active drives)."""
 
-    def __init__(self) -> None:
+    def __init__(self, audit: AuditChain | None = None) -> None:
+        self.audit = audit
+        self.file_hooks: list[Callable[[dict[str, Any]], None]] = []
         self._loop: asyncio.AbstractEventLoop | None = None
         self._queue: asyncio.Queue[_Event] = asyncio.Queue()
         self._tasks: list[asyncio.Task[None]] = []
@@ -120,7 +124,18 @@ class Hub:
 
     def file_scanned(self, scan_id: str, drive: str, result: ScanResult) -> None:
         fields = {k: v for k, v in result.to_dict().items() if k in FileScannedEvent.model_fields}
-        self.publish(FileScannedEvent(scan_id=scan_id, drive=drive, **fields))
+        event = FileScannedEvent(scan_id=scan_id, drive=drive, **fields)
+        if self.audit is None:
+            self.publish(event)
+            return
+        # Append + publish under one lock so chain order == broadcast order.
+        with self.audit.lock:
+            try:
+                payload = event.model_dump(mode="json", exclude={"chain_index", "chain_hash"})
+                event.chain_index, event.chain_hash = self.audit.append(payload)
+            except Exception:  # noqa: BLE001 - a log failure must not stop scanning
+                log.exception("audit append failed")
+            self.publish(event)
 
     def scan_complete(
         self, scan_id: str, drive: str, counts: dict[str, int], duration_s: float, cancelled: bool
@@ -170,6 +185,11 @@ class Hub:
             self.stats.total += 1
             tier = data["tier"].lower()
             setattr(self.stats, tier, getattr(self.stats, tier) + 1)
+        elif kind == "FILE_ENRICHED":
+            old, new = data["previous_tier"].lower(), data["tier"].lower()
+            if old != new:
+                setattr(self.stats, old, max(0, getattr(self.stats, old) - 1))
+                setattr(self.stats, new, getattr(self.stats, new) + 1)
         elif kind == "SCAN_COMPLETE":
             self.stats.scans_completed += 1
             drive = self.drives.get(data["drive"])
@@ -185,6 +205,9 @@ class Hub:
                 data = event.model_dump(mode="json")
                 self._apply(event, data)
                 payload = json.dumps(data)
+                if data["type"] == "FILE_SCANNED":
+                    for hook in self.file_hooks:
+                        hook(data)
                 for client in list(self._clients):
                     if not client.offer(payload):
                         log.warning("slow websocket client dropped")

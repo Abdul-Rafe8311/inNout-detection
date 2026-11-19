@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import type { FileScannedEvent, Tier } from "../types/telemetry";
+import type { Row } from "../hooks/useAegisSocket";
+import type { Tier } from "../types/telemetry";
 import { clock, TIER_BADGE } from "../lib/tier";
 import ForensicDrawer from "./ForensicDrawer";
 
@@ -7,14 +8,14 @@ type Filter = "ALL" | Tier;
 const FILTERS: Filter[] = ["ALL", "CRITICAL", "SUSPICIOUS", "SAFE"];
 const MAX_ROWS = 300;
 
-export default function ThreatLogTable({ files }: { files: FileScannedEvent[] }) {
+export default function ThreatLogTable({ files, onVaultChange }: { files: Row[]; onVaultChange: () => void }) {
   const [filter, setFilter] = useState<Filter>("ALL");
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const out: FileScannedEvent[] = [];
+    const out: Row[] = [];
     for (let i = files.length - 1; i >= 0 && out.length < MAX_ROWS; i--) {
       const f = files[i];
       if (filter !== "ALL" && f.tier !== filter) continue;
@@ -53,6 +54,7 @@ export default function ThreatLogTable({ files }: { files: FileScannedEvent[] })
               <th className="py-2 pr-3 font-medium">Tier</th>
               <th className="py-2 pr-3 text-right font-medium">Risk</th>
               <th className="py-2 pr-3 text-right font-medium">Entropy</th>
+              <th className="py-2 pr-3 font-medium">Intel</th>
               <th className="py-2 font-medium">First reason</th>
             </tr>
           </thead>
@@ -68,18 +70,29 @@ export default function ThreatLogTable({ files }: { files: FileScannedEvent[] })
                 </td>
                 <td className="py-1.5 pr-3 text-right font-mono">{f.risk_score}</td>
                 <td className="py-1.5 pr-3 text-right font-mono">{f.entropy.toFixed(2)}</td>
+                <td className="py-1.5 pr-3 text-xs">
+                  {f.intel?.some((v) => v.status === "malicious") ? (
+                    <span className="text-critical">flagged</span>
+                  ) : f.known_good ? (
+                    <span className="text-safe">known</span>
+                  ) : f.intel ? (
+                    <span className="text-slate-500">checked</span>
+                  ) : (
+                    <span className="text-slate-700">—</span>
+                  )}
+                </td>
                 <td className="max-w-80 truncate py-1.5 text-slate-400" title={f.reasons.join(" • ")}>{f.reasons[0]}</td>
               </tr>
             ))}
             {rows.length === 0 && (
-              <tr><td colSpan={6} className="py-8 text-center text-slate-600">
+              <tr><td colSpan={7} className="py-8 text-center text-slate-600">
                 {files.length === 0 ? "No files scanned yet. Plug in a drive or click Simulate USB." : "No files match this filter."}
               </td></tr>
             )}
           </tbody>
         </table>
       </div>
-      {selected && <ForensicDrawer file={selected} onClose={() => setSelectedId(null)} />}
+      {selected && <ForensicDrawer file={selected} onClose={() => setSelectedId(null)} onVaultChange={onVaultChange} />}
     </section>
   );
 }

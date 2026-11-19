@@ -35,6 +35,8 @@ class Settings:
     demo_drive_path: Path
     watch_usb: bool
     port: int
+    intel_offline: bool
+    vt_daily_quota: int
 
     @property
     def max_scan_file_size_bytes(self) -> int:
@@ -62,4 +64,6 @@ def get_settings() -> Settings:
         ).resolve(),
         watch_usb=_bool("AEGIS_WATCH_USB", True),
         port=int(os.getenv("AEGIS_PORT", "8000")),
+        intel_offline=_bool("AEGIS_INTEL_OFFLINE", False),
+        vt_daily_quota=int(os.getenv("AEGIS_VT_DAILY_QUOTA", "500")),
     )
