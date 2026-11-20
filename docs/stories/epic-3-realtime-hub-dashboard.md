@@ -79,7 +79,7 @@ So that I can demo and check the system anywhere.
 **Given** `AEGIS_DEMO_MODE=false`  
 **When** I simulate or eject  
 **Then** the server answers 403  
-*Verified by:* `test_demo_mode_off_blocks_demo_endpoints`
+*Verified by:* `test_demo_mode_off_blocks_demo_endpoints`, `test_reset_is_demo_only_and_refused_mid_scan`
 
 **Given** the dashboard origin `localhost:5173`  
 **When** it sends a CORS preflight  
@@ -102,13 +102,18 @@ So that I can judge a drive at a glance.
 
 **Given** a finished Simulate  
 **When** the Live tab is viewed  
-**Then** counters read 12 / 3 / 2 / 7, the entropy chart shows the 7.2 line, the risk matrix and scan queue are filled  
+**Then** counters read 12 / 3 / 2 / 7, the entropy chart fills its card height and shows the 7.2 line, the risk matrix and scan queue are filled  
 *Verified by:* manual: fresh-clone click-through, artifact: docs/images/dashboard.jpg
 
 **Given** a CRITICAL result and a completed scan  
 **When** the events arrive  
-**Then** the red banner and the toast appear and then expire on schedule  
+**Then** the red CRITICAL toast (bottom-left, never covering the header) and the scan toast appear and then expire on schedule  
 *Verified by:* manual: click-through, artifact: commit 611c5d5 (stable dismiss callbacks)
+
+**Given** demo mode and a finished scan  
+**When** the operator clicks Reset stats  
+**Then** counters, history, scan queue and risk matrix clear on every connected dashboard (a fresh SNAPSHOT is pushed), the audit chain is kept, and the button is hidden when demo mode is off and refused while a scan runs  
+*Verified by:* `test_reset_clears_stats_history_and_pushes_a_fresh_snapshot`, `test_reset_is_demo_only_and_refused_mid_scan`, manual: Chrome click-through
 
 **Given** the socket drops  
 **When** the API returns  

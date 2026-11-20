@@ -455,3 +455,33 @@ def test_quarantine_audit_lookup_runs_off_the_event_loop(client, monkeypatch):
     event = critical_event(run_scan(client))
     assert client.post(f"/api/quarantine/{event['event_id']}").status_code == 200
     assert seen["on_loop"] is False
+
+
+def test_reset_clears_stats_history_and_pushes_a_fresh_snapshot(client):
+    scan_id = run_scan(client)[0]["scan_id"]
+    assert client.get("/api/stats").json()["total"] == N
+    audit_len = client.app.state.audit.length()
+    with client.websocket_connect("/ws") as ws:
+        ws.receive_json()
+        r = client.post("/api/demo/reset")
+        assert r.status_code == 200 and r.json()["cleared_events"] > 0
+        snap = ws.receive_json()  # every connected dashboard gets the cleared state
+    assert snap["type"] == "SNAPSHOT" and snap["events"] == []
+    assert snap["stats"] == {"total": 0, "safe": 0, "suspicious": 0, "critical": 0, "scans_completed": 0}
+    assert client.get("/api/history").json() == []
+    assert client.get("/api/stats").json()["total"] == 0
+    assert client.app.state.audit.length() == audit_len  # evidence is kept
+    assert client.post(f"/api/reports/{scan_id}/sign?alg=ed25519").status_code == 200
+
+
+def test_reset_is_demo_only_and_refused_mid_scan(client, drive, monkeypatch):
+    client.app.state.hub.drives["Z:\\"] = schemas.DriveState(
+        drive="Z:\\", label="x", fs_type="demo", total_bytes=0, simulated=True, scan_id="s1"
+    )
+    assert client.post("/api/demo/reset").status_code == 409  # still scanning
+    client.app.state.hub.drives.clear()
+    assert client.get("/api/health").json()["demo_mode"] is True
+    monkeypatch.setenv("AEGIS_DEMO_MODE", "false")
+    get_settings.cache_clear()
+    assert client.post("/api/demo/reset").status_code == 403
+    assert client.get("/api/health").json()["demo_mode"] is False

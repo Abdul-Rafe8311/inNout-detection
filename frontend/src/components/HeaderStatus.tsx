@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { eject, SIM_DRIVE, simulate } from "../api";
+import { useEffect, useState } from "react";
+import { eject, getHealth, resetStats, SIM_DRIVE, simulate, verifyAudit } from "../api";
 import type { AuditVerifyResult, DriveState } from "../types/telemetry";
 import { ChainChip } from "./AuditChainBadge";
 import { formatBytes } from "../lib/tier";
@@ -38,8 +38,15 @@ function DrivePill({ d }: { d: DriveState }) {
 export default function HeaderStatus({ connected, drives, audit }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [demoMode, setDemoMode] = useState(false);
   const simDrive = drives.find((d) => d.drive === SIM_DRIVE);
   const scanning = simDrive?.scanning ?? false;
+
+  // Demo-only controls appear only when the backend runs with AEGIS_DEMO_MODE.
+  useEffect(() => {
+    if (!connected) return;
+    getHealth().then((h) => setDemoMode(h.demo_mode)).catch(() => setDemoMode(false));
+  }, [connected]);
 
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -87,6 +94,14 @@ export default function HeaderStatus({ connected, drives, audit }: Props) {
             className="rounded-md border border-line px-3 py-1.5 text-sm text-slate-300 hover:bg-line/60 disabled:cursor-not-allowed disabled:opacity-40">
             Eject
           </button>
+          {demoMode && (
+            <button type="button" disabled={busy || scanning || !connected}
+              title="Demo only: clears counters, history and the risk matrix (the audit chain is kept)"
+              onClick={() => run(async () => { await resetStats(); await verifyAudit(); })}
+              className="rounded-md border border-line px-3 py-1.5 text-sm text-slate-300 hover:bg-line/60 disabled:cursor-not-allowed disabled:opacity-40">
+              Reset stats
+            </button>
+          )}
         </div>
       </div>
     </header>

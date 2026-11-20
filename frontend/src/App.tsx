@@ -51,7 +51,7 @@ export default function App() {
     <div className="min-h-screen">
       {alert && (
         <div role="alert" key={alert.id}
-          className="aegis-flash fixed inset-x-0 top-0 z-50 bg-critical px-4 py-2 text-center text-sm font-semibold text-white">
+          className="aegis-flash fixed bottom-4 left-4 z-50 max-w-sm break-all rounded-lg border border-critical bg-critical px-4 py-3 text-sm font-semibold text-white shadow-xl">
           CRITICAL: {alert.filename}
         </div>
       )}

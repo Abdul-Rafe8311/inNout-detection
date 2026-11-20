@@ -6,6 +6,7 @@ import type {
   IntelLookupResponse,
   QuarantineEntry,
   RecentMalware,
+  ResetResponse,
   RestoreResult,
   SigAlgorithm,
   SignedReport,
@@ -40,6 +41,7 @@ export const SIM_DRIVE = "Z:\\";
 export const simulate = () => request<SimulateResponse>("POST", "/api/demo/simulate");
 export const eject = () =>
   request<EjectResponse>("POST", `/api/demo/eject?drive=${encodeURIComponent(SIM_DRIVE)}`);
+export const resetStats = () => request<ResetResponse>("POST", "/api/demo/reset");
 export const getHealth = () => request<HealthResponse>("GET", "/api/health");
 
 export const lookupHash = (hash: string) =>

@@ -28,6 +28,7 @@ from .schemas import (
     IntelLookupResponse,
     QuarantineEntry,
     RecentMalware,
+    ResetResponse,
     RestoreResult,
     SignedReport,
     SimulateResponse,
@@ -64,6 +65,7 @@ async def health(request: Request) -> HealthResponse:
         yara_rules=yara_scanner.rule_count(),
         intel_providers_online=state.intel.enabled_names(),
         ws_clients=state.hub.client_count,
+        demo_mode=get_settings().demo_mode,
     )
 
 
@@ -96,6 +98,21 @@ async def simulate(request: Request) -> SimulateResponse:
     info = DriveInfo(SIM_DRIVE, "AEGIS_DEMO", "simulated", 0, simulated=True)
     job = monitor.start_scan(str(root), info)
     return SimulateResponse(scan_id=job.scan_id, drive=SIM_DRIVE)
+
+
+@router.post("/api/demo/reset", response_model=ResetResponse)
+async def reset_stats(request: Request) -> ResetResponse:
+    """DEMO ONLY: clear counters, history and the risk matrix on every dashboard.
+
+    The audit chain, vault and intel cache are untouched. Refused while a scan is running.
+    """
+    _require_demo()
+    hub = request.app.state.hub
+    if hub.scanning():
+        raise HTTPException(409, "A scan is running: wait for it to finish or eject first")
+    cleared = len(hub.history)
+    hub.reset()
+    return ResetResponse(cleared_events=cleared)
 
 
 @router.post("/api/demo/eject", response_model=EjectResponse)

@@ -99,7 +99,7 @@ So that there are no surprises on presentation day.
 
 **Given** the same clone  
 **When** tests, lint and build run  
-**Then** 137 cases pass, `ruff` is clean and the strict build passes  
+**Then** 139 cases pass, `ruff` is clean and the strict build passes  
 *Verified by:* fresh-clone run, GitHub Actions
 
 ---

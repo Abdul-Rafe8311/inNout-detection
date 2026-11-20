@@ -180,11 +180,16 @@ export interface HealthResponse {
   yara_rules: number;
   intel_providers_online: string[];
   ws_clients: number;
+  demo_mode: boolean;
 }
 
 export interface SimulateResponse {
   scan_id: string;
   drive: string;
+}
+
+export interface ResetResponse {
+  cleared_events: number;
 }
 
 export interface EjectResponse {

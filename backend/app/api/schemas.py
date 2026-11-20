@@ -177,11 +177,16 @@ class HealthResponse(BaseModel):
     yara_rules: int
     intel_providers_online: list[str]
     ws_clients: int
+    demo_mode: bool
 
 
 class SimulateResponse(BaseModel):
     scan_id: str
     drive: str
+
+
+class ResetResponse(BaseModel):
+    cleared_events: int
 
 
 class EjectResponse(BaseModel):
@@ -273,7 +278,7 @@ class RestoreResult(BaseModel):
 CONTRACT_MODELS: list[type[BaseModel]] = [
     Stats, DriveState, UsbConnectedEvent, UsbDisconnectedEvent, ScanProgressEvent,
     FileScannedEvent, ScanCompleteEvent, AuditStatusEvent, HeartbeatEvent, SnapshotEvent,
-    HealthResponse, SimulateResponse, EjectResponse, IntelVerdict, FileEnrichedEvent,
+    HealthResponse, SimulateResponse, ResetResponse, EjectResponse, IntelVerdict, FileEnrichedEvent,
     IntelLookupRequest, IntelLookupResponse, RecentMalware, AuditVerifyResult, TamperResponse,
     UndoTamperResponse, SignedReport, VerifyRequest, VerifyResult, QuarantineEntry,
     RestoreResult, CourseRow, CourseMapResponse,

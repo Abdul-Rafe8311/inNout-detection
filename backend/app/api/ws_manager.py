@@ -77,6 +77,8 @@ class Hub:
         self.history: deque[dict[str, Any]] = deque(maxlen=HISTORY_SIZE)
         self.stats = Stats()
         self.drives: dict[str, DriveState] = {}
+        self._seen_scans: set[str] = set()  # every scan_id announced since start-up
+        self._stale_scans: set[str] = set()  # scans cleared by reset(): late intel is dropped
 
     # ---- lifecycle -------------------------------------------------------------------------
     def start(self, loop: asyncio.AbstractEventLoop) -> None:
@@ -163,12 +165,36 @@ class Hub:
         self._clients.add(client)
         return client
 
+    def scanning(self) -> bool:
+        """True while any drive is still being scanned (loop side)."""
+        return any(d.scanning for d in self.drives.values())
+
+    def reset(self) -> None:
+        """Demo reset: clear counters and history, then give every client a fresh SNAPSHOT.
+
+        Runs on the loop (AD-2). Connected drives stay. The audit chain is NOT touched (it is
+        evidence). Intel that finishes later for a cleared scan is dropped, so counters cannot
+        drift back up.
+        """
+        self._stale_scans |= self._seen_scans
+        self.history.clear()
+        self.stats = Stats()
+        snapshot = SnapshotEvent(
+            events=[], stats=self.stats.model_copy(),
+            drives=[d.model_copy() for d in self.drives.values()],
+        ).model_dump_json()
+        for client in list(self._clients):
+            if not client.offer(snapshot):
+                log.warning("slow websocket client dropped")
+                self._clients.discard(client)
+
     def remove_client(self, client: Client) -> None:
         self._clients.discard(client)
 
     def _apply(self, event: _Event, data: dict[str, Any]) -> None:
         kind = data["type"]
         if kind == "USB_CONNECTED":
+            self._seen_scans.add(data["scan_id"])
             self.drives[data["drive"]] = DriveState(
                 drive=data["drive"], label=data["label"], fs_type=data["fs_type"],
                 total_bytes=data["total_bytes"], simulated=data["simulated"],
@@ -203,6 +229,8 @@ class Hub:
             event = await self._queue.get()
             try:
                 data = event.model_dump(mode="json")
+                if data["type"] == "FILE_ENRICHED" and data["scan_id"] in self._stale_scans:
+                    continue  # intel for a scan the operator already reset away
                 self._apply(event, data)
                 payload = json.dumps(data)
                 if data["type"] == "FILE_SCANNED":

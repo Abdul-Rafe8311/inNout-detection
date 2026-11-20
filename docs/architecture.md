@@ -59,7 +59,7 @@ flowchart TD
 
 - **Binds:** FR-1–4, FR-16, FR-24; NFR-2.
 - **Prevents:** data races on `history`, `stats`, `drives` and the client set, and a frozen event loop.
-- **Rule:** polling, traversal, hashing, YARA and the scan `ThreadPoolExecutor` (default 4 workers) run off-loop. The **only** way a thread hands data to the loop is `Hub.publish` → `loop.call_soon_threadsafe(queue.put_nowait, event)`. `Hub.history`, `Hub.stats`, `Hub.drives` and client queues are mutated **only** on the loop (`_broadcaster`, `add_client`, `remove_client`). Route handlers move blocking work with `asyncio.to_thread`. Intel uses async `httpx` and three loop worker tasks.
+- **Rule:** polling, traversal, hashing, YARA and the scan `ThreadPoolExecutor` (default 4 workers) run off-loop. The **only** way a thread hands data to the loop is `Hub.publish` → `loop.call_soon_threadsafe(queue.put_nowait, event)`. `Hub.history`, `Hub.stats`, `Hub.drives` and client queues are mutated **only** on the loop (`_broadcaster`, `add_client`, `remove_client`, and the demo `reset`, which clears history and stats, pushes a fresh SNAPSHOT to every client and drops late intel for the cleared scans; the audit chain is never reset). Route handlers move blocking work with `asyncio.to_thread`. Intel uses async `httpx` and three loop worker tasks.
 - **No exceptions:** every SQLite call reaches the loop through `asyncio.to_thread`: `IntelCache` wraps each of its calls, `IntelService._enrich` saves enrichments with `to_thread(audit.save_enrichment, ...)`, and the quarantine route reads the record with `to_thread(audit.get_event, ...)`. Never call an `AuditChain` or `IntelCache` sync method directly from a coroutine. Tests spy on both calls and assert they run off the loop thread.
 - **Why / Rejected:** the original spec mandates "no blocking in the event loop" (MASTER_PROMPT §8).
 
@@ -310,7 +310,7 @@ backend/app/
   rules/   usb_threats.yar
 backend/scripts/         # verify_report, bench_ciphers, avalanche_demo, gen_course_mapping
 frontend/src/            # App.tsx, api.ts, hooks/useAegisSocket.ts, types/telemetry.ts, components/*, lib/*
-qa_demo/                 # generate_payloads.py, conftest.py, test_*.py (137 cases), README.md
+qa_demo/                 # generate_payloads.py, conftest.py, test_*.py (139 cases), README.md
 docs/                    # prd.md, architecture.md, stories/, design docs
 .github/workflows/ci.yml
 ```

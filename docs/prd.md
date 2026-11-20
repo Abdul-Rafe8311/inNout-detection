@@ -18,7 +18,7 @@ or artifact that proves it**. Where the build falls short of the original specif
 (`docs/MASTER_PROMPT.md`), the FR is kept and marked honestly rather than dropped; see §5 and §9.
 
 Sources of truth: the code under `backend/` and `frontend/`, the tests under `qa_demo/`
-(**137 collected cases from 104 test functions**), and `docs/*.md`. Vocabulary is anchored by the
+(**139 collected cases from 106 test functions**), and `docs/*.md`. Vocabulary is anchored by the
 Glossary (§3); FR, UJ and SM numbers are stable.
 
 ## 1. Vision
@@ -509,7 +509,7 @@ FR-48 to FR-53 (§4.11); presentation slides; PRD-level UX specification (the UI
 - **SM-1 Expected verdicts.** 12 of 12 demo files land in their expected Tier with exactly their
   expected YARA rule; counters read 3 / 2 / 7. Validates FR-6 to FR-15. *(Verified in tests and in a
   fresh-clone run.)*
-- **SM-2 Tests pass everywhere.** 137 collected cases pass locally, in a fresh clone and in GitHub
+- **SM-2 Tests pass everywhere.** 139 collected cases pass locally, in a fresh clone and in GitHub
   Actions; `ruff` clean; strict TypeScript build passes. Validates FR-24, FR-43.
 - **SM-3 Integrity is demonstrable.** The chain verifies after a Scan and reports the exact edited
   index after tampering; Signed Reports verify with all three algorithms and fail after a one-digit
@@ -551,7 +551,7 @@ FR-48 to FR-53 (§4.11); presentation slides; PRD-level UX specification (the UI
 ## 10. Cross-Cutting Non-Functional Requirements
 *Bounds, not adjectives; each with its evidence.*
 
-- **NFR-1 Quality gates.** 137 test cases (104 functions) pass; `ruff` clean; strict TypeScript
+- **NFR-1 Quality gates.** 139 test cases (106 functions) pass; `ruff` clean; strict TypeScript
   build; GitHub Actions runs lint, tests and build on every push and pull request.
 - **NFR-2 Throughput bounds.** 64 KB chunks; 50 MB default size cap; scan work window of 4 ×
   workers (default 4 workers); YARA timeout 10 s. Measured: 12 demo files scan in about 0.1 s.
