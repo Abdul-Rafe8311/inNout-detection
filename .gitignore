@@ -12,3 +12,8 @@ qa_demo/sample_usb_drive/
 frontend/.env
 env.txt
 *.env.txt
+
+# BMAD tooling and run scratch: only the generated docs are committed
+_bmad/
+_bmad-output/
+.claude/skills/
