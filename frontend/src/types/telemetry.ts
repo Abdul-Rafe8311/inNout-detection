@@ -224,6 +224,41 @@ export interface UndoTamperResponse {
   restored: boolean;
 }
 
+/** Tier counts in a signed report. */
+export interface ReportTierCounts {
+  safe: number;
+  suspicious: number;
+  critical: number;
+}
+
+/**
+ * One file in a signed report. `tier`, scores, `mitre` and `reasons` are the exact audit-chain
+ * record (scan time); the `final_*` fields are the result after threat intel (AD-5, AD-7).
+ */
+export interface ReportFile {
+  filename: string;
+  file?: string;
+  sha256: string | null;
+  size_bytes: number;
+  tier: Tier;
+  likelihood: number;
+  impact: number;
+  risk_score: number;
+  final_tier: Tier;
+  final_risk_score: number;
+  final_reasons: string[];
+  final_mitre: string[];
+  chain_index: number;
+  chain_hash: string;
+}
+
+/** Shape of `SignedReport.report` as built by the backend (`schema: aegis-usb-report/1`). */
+export interface ReportBody {
+  scan_id: string;
+  summary: { total: number } & ReportTierCounts & { final: ReportTierCounts };
+  files: ReportFile[];
+}
+
 export interface SignedReport {
   report: Record<string, unknown>;
   signature_b64: string;
