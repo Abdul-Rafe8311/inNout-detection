@@ -87,6 +87,44 @@ export interface FileScannedEvent {
   chain_hash: string | null;
 }
 
+export type IntelStatus =
+  | "malicious"
+  | "suspicious"
+  | "clean"
+  | "known_good"
+  | "not_found"
+  | "error"
+  | "skipped";
+
+export interface IntelVerdict {
+  provider: string;
+  status: IntelStatus;
+  summary: string;
+  link: string | null;
+  detections: number | null;
+  engines: number | null;
+  cached: boolean;
+}
+
+export interface FileEnrichedEvent {
+  event_id: string;
+  timestamp: string;
+  type: "FILE_ENRICHED";
+  scan_id: string;
+  drive: string;
+  file_event_id: string;
+  sha256: string;
+  verdicts: IntelVerdict[];
+  known_good: boolean;
+  previous_tier: Tier;
+  tier: Tier;
+  likelihood: number;
+  impact: number;
+  risk_score: number;
+  reasons: string[];
+  mitre: string[];
+}
+
 export interface ScanCompleteEvent {
   event_id: string;
   timestamp: string;
@@ -131,6 +169,7 @@ export type TelemetryEvent =
   | UsbDisconnectedEvent
   | ScanProgressEvent
   | FileScannedEvent
+  | FileEnrichedEvent
   | ScanCompleteEvent
   | AuditStatusEvent
   | HeartbeatEvent
@@ -150,4 +189,97 @@ export interface SimulateResponse {
 
 export interface EjectResponse {
   ejected: boolean;
+}
+
+export interface IntelLookupRequest {
+  hash: string;
+}
+
+export interface IntelLookupResponse {
+  sha256: string;
+  verdicts: IntelVerdict[];
+  malicious: boolean;
+  known_good: boolean;
+}
+
+export interface RecentMalware {
+  sha256: string;
+  file_name: string | null;
+  file_type: string | null;
+  signature: string | null;
+  first_seen: string | null;
+}
+
+export interface AuditVerifyResult {
+  valid: boolean;
+  length: number;
+  broken_at: number | null;
+}
+
+export interface TamperResponse {
+  tampered_index: number;
+}
+
+export interface UndoTamperResponse {
+  restored: boolean;
+}
+
+export interface SignedReport {
+  report: Record<string, unknown>;
+  signature_b64: string;
+  algorithm: string;
+  public_key_pem: string;
+  certificate_pem: string;
+}
+
+export interface VerifyRequest {
+  report: Record<string, unknown>;
+  signature_b64: string;
+  algorithm: string;
+  public_key_pem: string;
+}
+
+export interface VerifyResult {
+  valid: boolean;
+  reason: string;
+  algorithm: string;
+  key_fingerprint_sha256: string | null;
+  matches_station_key: boolean;
+}
+
+export interface QuarantineEntry {
+  id: string;
+  filename: string;
+  original_path: string;
+  size_bytes: number;
+  sha256: string;
+  tier: string;
+  scan_id: string;
+  drive: string;
+  simulated: boolean;
+  quarantined_at: string;
+  original_deleted: boolean;
+}
+
+export interface RestoreResult {
+  id: string;
+  restored_path: string;
+  sha256: string;
+  verified: boolean;
+}
+
+export type SigAlgorithm = "rsa-pss" | "dsa" | "ed25519";
+
+export interface CourseRow {
+  week: string;
+  topic: string;
+  feature: string;
+  files: string[];
+  cia: string;
+  status: "implemented" | "partial" | "not_built";
+  note: string | null;
+}
+
+export interface CourseMapResponse {
+  rows: CourseRow[];
 }

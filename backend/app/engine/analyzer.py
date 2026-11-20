@@ -14,6 +14,7 @@ from . import magic_bytes as mb
 from .authenticode import check_authenticode
 from .entropy import ByteStats
 from .hasher import StreamDigest
+from .intel.base import IntelVerdict
 from .xor_detect import find_xor_pe
 from .yara_scanner import YaraHit, scan_file
 
@@ -196,3 +197,64 @@ def analyze_file(path: str, *, max_size_bytes: int) -> ScanResult:
         mitre=verdict.mitre, reasons=reasons,
         scan_status="PARTIAL" if partial else "COMPLETE", entropy_exempt=exempt,
     )
+
+
+@dataclass
+class IntelOutcome:
+    """Tier/risk after folding threat-intel verdicts into a static-analysis result."""
+
+    tier: str
+    likelihood: int
+    impact: int
+    reasons: list[str]
+    mitre: list[str]
+    known_good: bool
+
+
+def is_entropy_only_alert(tier: str, filename: str, rtlo: bool, entropy: float) -> bool:
+    """SUSPICIOUS purely because of high entropy (no script extension, no RTLO trick)."""
+    return (
+        tier == "SUSPICIOUS"
+        and mb.get_extension(filename) not in mb.SCRIPT_EXTS
+        and not rtlo
+        and entropy > ENTROPY_THRESHOLD
+    )
+
+
+def apply_intel(
+    *,
+    tier: str,
+    likelihood: int,
+    impact: int,
+    reasons: list[str],
+    mitre: list[str],
+    filename: str,
+    rtlo: bool,
+    entropy: float,
+    verdicts: list[IntelVerdict],
+) -> IntelOutcome:
+    """Escalate on malicious intel; downgrade entropy-only alerts for known-good files.
+
+    * any ``malicious`` verdict -> CRITICAL (5 x 5); malicious always wins over known-good
+    * ``known_good`` (CIRCL/NSRL) downgrades SUSPICIOUS to SAFE only when entropy was the sole
+      reason (no script extension, no RTLO), and the reason is shown
+    * ``suspicious`` intel lifts a SAFE file to SUSPICIOUS
+    """
+    new_reasons = list(reasons)
+    new_mitre = list(mitre)
+    known_good = any(v.status == "known_good" for v in verdicts)
+    malicious = [v for v in verdicts if v.status == "malicious"]
+    flagged = [v for v in verdicts if v.status == "suspicious"]
+
+    if malicious:
+        intel_reasons = [f"Threat intel ({v.provider}): {v.summary}" for v in malicious]
+        _add(new_mitre, "T1204.002")
+        return IntelOutcome("CRITICAL", 5, 5, intel_reasons + new_reasons, new_mitre, known_good)
+    if known_good and is_entropy_only_alert(tier, filename, rtlo, entropy):
+        good = next(v for v in verdicts if v.status == "known_good")
+        note = f"Downgraded: {good.summary}. High entropy alone is not suspicious here"
+        return IntelOutcome("SAFE", 1, 2, [note] + new_reasons, new_mitre, True)
+    if flagged and tier == "SAFE":
+        note = f"Threat intel ({flagged[0].provider}): {flagged[0].summary}"
+        return IntelOutcome("SUSPICIOUS", 3, 3, [note] + new_reasons, new_mitre, known_good)
+    return IntelOutcome(tier, likelihood, impact, new_reasons, new_mitre, known_good)
