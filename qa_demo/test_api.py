@@ -231,7 +231,10 @@ def test_sign_report_endpoint_then_verify_and_tamper_detection(client, alg):
     body = signed.json()
     assert body["algorithm"] == alg and "BEGIN CERTIFICATE" in body["certificate_pem"]
     report = body["report"]
-    assert report["summary"] == {"total": N, "safe": 3, "suspicious": 2, "critical": 7}
+    assert report["summary"] == {
+        "total": N, "safe": 3, "suspicious": 2, "critical": 7,
+        "final": {"safe": 3, "suspicious": 2, "critical": 7},  # offline: no enrichment
+    }
     assert len(report["files"]) == N and report["station"] == "AEGIS Scanner Station"
     assert all(f["chain_index"] for f in report["files"])
     ok = client.post("/api/reports/verify", json={k: body[k] for k in ("report", "signature_b64", "algorithm", "public_key_pem")})
@@ -393,5 +396,62 @@ def test_network_intel_escalates_row_and_moves_stats(drive, monkeypatch):
         assert snap["stats"]["critical"] == 8
         files = c.post(f"/api/reports/{scan_id}/sign?alg=ed25519").json()["report"]
         backup = next(f for f in files["files"] if f["sha256"] == target)
-        assert backup["tier"] == "CRITICAL" and backup["intel"][0]["status"] in ("not_found", "malicious")
-        assert files["summary"]["critical"] == 8
+        # the report carries the chained (scan-time) tier; the intel upgrade is separate
+        assert backup["tier"] == "SUSPICIOUS" and backup["final_tier"] == "CRITICAL"
+        assert backup["intel"][0]["status"] in ("not_found", "malicious")
+        assert files["summary"]["critical"] == 7 and files["summary"]["final"]["critical"] == 8
+
+
+def test_signed_report_matches_the_chained_record_even_after_enrichment(drive, monkeypatch):
+    """Every chained field in a signed report equals the audit-chain record; intel is separate."""
+    target = hashlib.sha256((drive / "backup_archive.bin").read_bytes()).hexdigest()
+
+    def mb_handler(request):
+        form = parse_qs(request.content.decode())
+        if form["query"] == ["get_info"] and form["hash"] == [target]:
+            return httpx.Response(200, json={"query_status": "ok", "data": [{"signature": "FakeLocker", "file_type": "bin", "first_seen": "2026-01-01"}]})
+        return httpx.Response(200, json={"query_status": "hash_not_found"})
+
+    with respx.mock(assert_all_called=False) as router, app_client(
+        drive, monkeypatch, AEGIS_INTEL_OFFLINE="false", AEGIS_MB_AUTH_KEY="k1"
+    ) as c:
+        mock_circl_404(router)
+        router.post("https://mb-api.abuse.ch/api/v1/").mock(side_effect=mb_handler)
+        scan_id = run_scan(c)[0]["scan_id"]
+        wait_for(lambda: (e := history_enriched(c)) and len(e) >= 9 and e)
+        report = c.post(f"/api/reports/{scan_id}/sign?alg=ed25519").json()["report"]
+        chained = {e["event_id"]: e for e in c.app.state.audit.events_for_scan(scan_id)}
+        assert len(report["files"]) == len(chained)
+        by_index = {e["chain_index"]: e for e in chained.values()}
+        for f in report["files"]:
+            rec = by_index[f["chain_index"]]
+            assert f["chain_hash"] == rec["chain_hash"]
+            for key in ("sha256", "tier", "likelihood", "impact", "risk_score", "mitre", "reasons"):
+                assert f[key] == rec[key], key
+        upgraded = next(f for f in report["files"] if f["sha256"] == target)
+        assert upgraded["tier"] == "SUSPICIOUS" and upgraded["final_tier"] == "CRITICAL"
+        assert upgraded["final_risk_score"] == 25 and "FakeLocker" in upgraded["final_reasons"][0]
+
+
+def test_quarantine_audit_lookup_runs_off_the_event_loop(client, monkeypatch):
+    """audit.get_event (SQLite) must not execute on the asyncio loop thread."""
+    import asyncio
+    import threading
+
+    seen = {}
+    audit = client.app.state.audit
+    real = audit.get_event
+
+    def spy(event_id):
+        try:
+            asyncio.get_running_loop()
+            seen["on_loop"] = True
+        except RuntimeError:
+            seen["on_loop"] = False
+        seen["thread"] = threading.get_ident()
+        return real(event_id)
+
+    monkeypatch.setattr(audit, "get_event", spy)
+    event = critical_event(run_scan(client))
+    assert client.post(f"/api/quarantine/{event['event_id']}").status_code == 200
+    assert seen["on_loop"] is False

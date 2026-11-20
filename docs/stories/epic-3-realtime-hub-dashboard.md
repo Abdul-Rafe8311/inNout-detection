@@ -34,6 +34,11 @@ So that I never lose results or see duplicates.
 **And** after Simulate it receives `USB_CONNECTED`, 12 `FILE_SCANNED` and `SCAN_COMPLETE` with matching counts  
 *Verified by:* `test_websocket_snapshot_first_then_simulate`
 
+**Given** a quarantine request  
+**When** the route looks up the chained event  
+**Then** the SQLite read runs off the event loop (AD-2)  
+*Verified by:* `test_quarantine_audit_lookup_runs_off_the_event_loop`
+
 **Given** a finished scan  
 **When** a new client connects  
 **Then** its `SNAPSHOT` holds all 12 results, correct stats and no duplicate `event_id`  

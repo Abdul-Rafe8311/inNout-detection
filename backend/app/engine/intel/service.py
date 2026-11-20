@@ -204,8 +204,9 @@ class IntelService:
             reasons=outcome.reasons, mitre=outcome.mitre,
         )
         if self.audit is not None:
-            self.audit.save_enrichment(
-                enriched.file_event_id, enriched.scan_id, enriched.model_dump_json()
+            await asyncio.to_thread(  # SQLite write: keep it off the event loop (AD-2)
+                self.audit.save_enrichment,
+                enriched.file_event_id, enriched.scan_id, enriched.model_dump_json(),
             )
         if self._publish is not None:
             self._publish(enriched)

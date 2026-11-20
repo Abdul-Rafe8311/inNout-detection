@@ -60,7 +60,7 @@ flowchart TD
 - **Binds:** FR-1–4, FR-16, FR-24; NFR-2.
 - **Prevents:** data races on `history`, `stats`, `drives` and the client set, and a frozen event loop.
 - **Rule:** polling, traversal, hashing, YARA and the scan `ThreadPoolExecutor` (default 4 workers) run off-loop. The **only** way a thread hands data to the loop is `Hub.publish` → `loop.call_soon_threadsafe(queue.put_nowait, event)`. `Hub.history`, `Hub.stats`, `Hub.drives` and client queues are mutated **only** on the loop (`_broadcaster`, `add_client`, `remove_client`). Route handlers move blocking work with `asyncio.to_thread`. Intel uses async `httpx` and three loop worker tasks.
-- **Known exceptions (as built):** `audit.save_enrichment` (in `IntelService._enrich`) and `audit.get_event` (quarantine route) perform small SQLite calls directly on the loop. Do not add more; see Known Limits L-4.
+- **No exceptions:** every SQLite call reaches the loop through `asyncio.to_thread`: `IntelCache` wraps each of its calls, `IntelService._enrich` saves enrichments with `to_thread(audit.save_enrichment, ...)`, and the quarantine route reads the record with `to_thread(audit.get_event, ...)`. Never call an `AuditChain` or `IntelCache` sync method directly from a coroutine. Tests spy on both calls and assert they run off the loop thread.
 - **Why / Rejected:** the original spec mandates "no blocking in the event loop" (MASTER_PROMPT §8).
 
 ### AD-3 — Events are immutable facts; new knowledge is a new event [ADOPTED]
@@ -81,7 +81,7 @@ flowchart TD
 
 - **Binds:** FR-30, FR-24.
 - **Prevents:** a chain whose indices disagree with what the dashboard saw.
-- **Rule:** `Hub.file_scanned` appends to the audit chain and publishes the event **while holding `AuditChain.lock`** (an `RLock`). `chain_index` and `chain_hash` are set after the append and are **excluded** from the hashed payload. Only `FILE_SCANNED` is chained; enrichments are stored in a separate table and are not part of the chain. If the append fails, the event is still published (without chain fields) and the error is logged; scanning is never stopped by a logging failure. **Scope of the guarantee:** the chain attests the *scan-time* record only. A signed report shows the post-enrichment Tier (AD-7) next to the scan-time `chain_hash`, so the Tier in a report may legitimately differ from the chained payload's `tier`; do not describe the chain as covering enrichments.
+- **Rule:** `Hub.file_scanned` appends to the audit chain and publishes the event **while holding `AuditChain.lock`** (an `RLock`). `chain_index` and `chain_hash` are set after the append and are **excluded** from the hashed payload. Only `FILE_SCANNED` is chained; enrichments are stored in a separate table and are not part of the chain. If the append fails, the event is still published (without chain fields) and the error is logged; scanning is never stopped by a logging failure. **Scope of the guarantee:** the chain attests the *scan-time* record only; do not describe it as covering enrichments. A signed report therefore copies the chained record verbatim (`tier`, `likelihood`, `impact`, `risk_score`, `mitre`, `reasons`, `chain_index`, `chain_hash`), so those fields always equal the audit-chain record for the same scan (AD-10). Intel-adjusted results (AD-7) are reported alongside, never in place of them: `final_tier`, `final_risk_score`, `final_reasons`, `final_mitre` and the `intel` verdicts.
 
 ### AD-6 — Audit chain definition [ADOPTED]
 
@@ -94,7 +94,7 @@ flowchart TD
 
 - **Binds:** FR-13–15, FR-20; `engine/analyzer.py`.
 - **Prevents:** the UI, report builder or intel code deciding tiers differently.
-- **Rule:** `analyzer.classify` produces the static Tier, likelihood, impact, reasons and MITRE IDs; `analyzer.apply_intel` is the only place a Tier changes afterward (malicious → CRITICAL 5×5; known-good downgrades only an **entropy-only** SUSPICIOUS, never scripts or RTLO; suspicious intel lifts only SAFE). `risk_score = likelihood × impact`. The UI and the report builder read these values; they never recompute a Tier. Final tier in a report is the enrichment's tier when one exists.
+- **Rule:** `analyzer.classify` produces the static Tier, likelihood, impact, reasons and MITRE IDs; `analyzer.apply_intel` is the only place a Tier changes afterward (malicious → CRITICAL 5×5; known-good downgrades only an **entropy-only** SUSPICIOUS, never scripts or RTLO; suspicious intel lifts only SAFE). `risk_score = likelihood × impact`. The UI and the report builder read these values; they never recompute a Tier. The report's `final_tier` is the enrichment's tier when one exists (else the scan-time tier); its `tier` stays the chained one (AD-5).
 
 ### AD-8 — One intel pipeline, hash-only, degrading to verdicts [ADOPTED]
 
@@ -113,6 +113,7 @@ flowchart TD
 
 - **Binds:** FR-33–35; `crypto/signer.py`, `crypto/keystore.py`, `backend/scripts/verify_report.py`.
 - **Prevents:** a report that verifies in the app but not offline, or a signature over bytes nobody can reproduce.
+- **Report content:** per-file `tier` and scores come from the exact chained record (`AuditChain.events_for_scan`), never from enrichment. `summary` counts `safe`/`suspicious`/`critical` by chained tier and adds `summary.final` with the same counts by `final_tier`, so a CRITICAL intel verdict is visible without breaking the match with the chain.
 - **Rule:** signed bytes = `json.dumps(report, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()`. Algorithms: `rsa-pss` (RSA-3072, SHA-256, salt length 32, default), `dsa` (3072), `ed25519`. `sign_report` returns a **deep copy** of the report. `verify_report.py` deliberately re-implements the canonical form and imports nothing from `app`, so it needs only `cryptography`; any change to canonicalization must change both (tests run them against each other and against `openssl`). Keys are generated lazily and stored as PEM (mode 0600) under `data/keys/` with a self-signed X.509 certificate (CN "AEGIS Scanner Station", 365 days). Trust is established **out of band** by comparing the SHA-256 of the DER SubjectPublicKeyInfo; a valid signature is never presented as proof of identity.
 - **Why / Rejected:** DSA is kept for comparison only because FIPS 186-5 no longer approves it for new signatures; PKCS#1 v1.5 is not offered (CRYPTO_DESIGN §1).
 
@@ -309,7 +310,7 @@ backend/app/
   rules/   usb_threats.yar
 backend/scripts/         # verify_report, bench_ciphers, avalanche_demo, gen_course_mapping
 frontend/src/            # App.tsx, api.ts, hooks/useAegisSocket.ts, types/telemetry.ts, components/*, lib/*
-qa_demo/                 # generate_payloads.py, conftest.py, test_*.py (134 cases), README.md
+qa_demo/                 # generate_payloads.py, conftest.py, test_*.py (137 cases), README.md
 docs/                    # prd.md, architecture.md, stories/, design docs
 .github/workflows/ci.yml
 ```
@@ -337,7 +338,7 @@ docs/                    # prd.md, architecture.md, stories/, design docs
 | L-1 | **No API authentication**; protection is localhost binding, CORS and the Origin check (AD-12). | Any local process can call the API. | RISK_REGISTER R3 |
 | L-2 | **Single process, single host**; the hub is one in-memory object. | No horizontal scale or failover; history, stats and drives reset on restart (AD-4, AD-14). | PRD §10 |
 | L-3 | **SQLite files** guarded by explicit locks, one writer per file. | Chain appends are synchronous per file (throughput bound); no concurrent processes on one data dir. | AD-14 |
-| L-4 | Two small SQLite calls run **on the event loop** (`save_enrichment`, `get_event`). | Short, bounded stalls under heavy enrichment; breaks the letter of AD-2. | AD-2 |
+| L-4 | *Resolved:* the two on-loop SQLite calls (`save_enrichment`, `get_event`) now use `asyncio.to_thread`. | None; kept for ID stability. | AD-2 |
 | L-5 | **Verification was macOS-only.** Windows and Linux logic is unit-tested with fakes; a real USB stick was never exercised on any OS; no 2–5 GB run. | Platform claims are unproven on the demo OS. | PRD FR-1, FR-53 |
 | L-6 | `requirements.txt` uses `>=` floors with **no Python lockfile**; Python 3.14 unsupported. | Rebuilds may pick newer dependency versions. | AD-17 |
 | L-7 | **Chain tail truncation is undetectable** by the chain alone; self-signed certificates add no trust. | Evidence is tamper-evident, not tamper-proof; trust needs an out-of-band fingerprint. | CRYPTO_DESIGN §4–5, R12 |

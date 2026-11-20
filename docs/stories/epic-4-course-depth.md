@@ -65,6 +65,11 @@ So that I get live verdicts without sending file contents anywhere.
 **Then** they are malicious, malicious, suspicious and clean as defined  
 *Verified by:* `test_virustotal_thresholds`
 
+**Given** an enrichment is produced  
+**When** it is persisted to the audit database  
+**Then** the SQLite write runs in a worker thread, never on the event loop  
+*Verified by:* `test_enrichment_is_saved_off_the_event_loop`
+
 **Given** CIRCL returns a trusted or a low-trust record  
 **When** the lookup finishes  
 **Then** trusted is `known_good`, low trust is `not_found`  
@@ -271,6 +276,11 @@ So that another person can trust the report was not changed.
 **When** a scan is signed and verified  
 **Then** `/api/reports/{id}/sign` and `/verify` work for all three algorithms and detect tampering  
 *Verified by:* `test_sign_report_endpoint_then_verify_and_tamper_detection`
+
+**Given** a scan whose file intel later escalated from SUSPICIOUS to CRITICAL  
+**When** the report is signed  
+**Then** each file's `tier`, scores, `mitre`, `reasons`, `chain_index` and `chain_hash` equal the audit-chain record, and the intel result appears separately as `final_tier` / `final_risk_score` / `final_reasons` (summary counts by chained tier, with `summary.final` by final tier)  
+*Verified by:* `test_signed_report_matches_the_chained_record_even_after_enrichment`, `test_network_intel_escalates_row_and_moves_stats`
 
 **Given** garbage input or a foreign key  
 **When** verification runs  

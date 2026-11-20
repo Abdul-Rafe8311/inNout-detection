@@ -176,7 +176,6 @@ def _build_report(request: Request, scan_id: str) -> dict[str, Any] | None:
     files: list[dict[str, Any]] = []
     for e in events:
         extra = enriched.get(e["event_id"], {})
-        tier = extra.get("tier", e["tier"])
         name = e["filename"]
         if redact:  # privacy mode: keep the extension and hash, drop the name and path
             ext = name.rsplit(".", 1)[1] if "." in name else ""
@@ -184,30 +183,33 @@ def _build_report(request: Request, scan_id: str) -> dict[str, Any] | None:
         files.append({
             "filename": name,
             **({} if redact else {"file": e["file"]}),
-            "sha256": e["sha256"], "size_bytes": e["size_bytes"], "tier": tier,
-            "likelihood": extra.get("likelihood", e["likelihood"]),
-            "impact": extra.get("impact", e["impact"]),
-            "risk_score": extra.get("risk_score", e["risk_score"]),
+            # Exactly the chained record: tier, scores and reasons equal what the audit chain
+            # attests for this scan (AD-5). Later intel is reported separately below.
+            "sha256": e["sha256"], "size_bytes": e["size_bytes"], "tier": e["tier"],
+            "likelihood": e["likelihood"], "impact": e["impact"], "risk_score": e["risk_score"],
             "entropy": e["entropy"], "magic_type": e["magic_type"],
             "yara_matches": e["yara_matches"], "authenticode": e["authenticode"],
-            "mitre": extra.get("mitre", e["mitre"]), "reasons": extra.get("reasons", e["reasons"]),
+            "mitre": e["mitre"], "reasons": e["reasons"],
+            "final_tier": extra.get("tier", e["tier"]),
+            "final_risk_score": extra.get("risk_score", e["risk_score"]),
+            "final_reasons": extra.get("reasons", e["reasons"]),
+            "final_mitre": extra.get("mitre", e["mitre"]),
             "intel": [
                 {"provider": v["provider"], "status": v["status"], "summary": v["summary"]}
                 for v in extra.get("verdicts", [])
             ],
             "chain_index": e["chain_index"], "chain_hash": e["chain_hash"],
         })
-    counts = {
-        t: sum(1 for f in files if f["tier"] == t.upper())
-        for t in ("safe", "suspicious", "critical")
-    }
+    tiers = ("safe", "suspicious", "critical")
+    counts = {t: sum(1 for f in files if f["tier"] == t.upper()) for t in tiers}
+    final_counts = {t: sum(1 for f in files if f["final_tier"] == t.upper()) for t in tiers}
     return {
         "schema": "aegis-usb-report/1",
         "scan_id": scan_id,
         "drive": events[0]["drive"],
         "generated_at": datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z"),
         "station": STATION_NAME,
-        "summary": {"total": len(files), **counts},
+        "summary": {"total": len(files), **counts, "final": final_counts},
         "audit_range": {
             "first_index": events[0]["chain_index"], "last_index": events[-1]["chain_index"],
             "last_chain_hash": events[-1]["chain_hash"],
@@ -270,7 +272,7 @@ async def quarantine(request: Request, event_id: str) -> QuarantineEntry:
     """Copy the flagged file into the AES-256-GCM vault. The original is NOT deleted."""
     _check_event_id(event_id)
     vault = _vault(request)
-    event = request.app.state.audit.get_event(event_id)
+    event = await asyncio.to_thread(request.app.state.audit.get_event, event_id)
     if event is None:
         raise HTTPException(404, "Unknown file event")
     if not event["sha256"]:

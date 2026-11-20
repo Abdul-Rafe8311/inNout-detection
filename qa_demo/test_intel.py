@@ -340,3 +340,28 @@ async def test_safe_text_file_is_never_sent_to_the_network(monkeypatch, respx_mo
     await svc._enrich(scanned(filename="notes.txt", sha256="aa" * 32))
     assert anything.call_count == 0 and published == []
     await svc.stop()
+
+
+@respx.mock(assert_all_called=False)
+async def test_enrichment_is_saved_off_the_event_loop(monkeypatch, respx_mock):
+    """save_enrichment (SQLite) must run in a worker thread, never on the loop thread."""
+    import asyncio
+    import threading
+
+    class SpyAudit:
+        calls: list[tuple[int, str, str]] = []
+
+        def save_enrichment(self, file_event_id, scan_id, payload):
+            self.calls.append((threading.get_ident(), file_event_id, scan_id))
+
+    svc = make_service(monkeypatch, mb="")
+    svc.audit = spy = SpyAudit()
+    svc._publish = lambda event: None
+    respx_mock.get(CIRCL_URL).mock(return_value=httpx.Response(404))
+    respx_mock.get(VT_URL).mock(return_value=httpx.Response(200, json=vt_json(65, undetected=9)))
+    loop_thread = threading.get_ident()
+    await svc._enrich(scanned())
+    assert len(spy.calls) == 1 and spy.calls[0][1:] == ("e" * 32, "s")
+    assert spy.calls[0][0] != loop_thread
+    assert asyncio.get_running_loop() is not None
+    await svc.stop()
