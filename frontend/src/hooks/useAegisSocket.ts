@@ -1,4 +1,4 @@
-import { useEffect, useReducer } from "react";
+import { useCallback, useEffect, useReducer } from "react";
 import type {
   AuditVerifyResult,
   DriveState,
@@ -314,9 +314,9 @@ export function useAegisSocket() {
     };
   }, []);
 
-  return {
-    state,
-    dismissToast: () => dispatch({ kind: "dismissToast" }),
-    dismissAlert: () => dispatch({ kind: "dismissAlert" }),
-  };
+  // Stable identities: App's auto-dismiss timers depend on these, and a new function on every
+  // render would restart the timer each time an event arrives (toasts would never expire).
+  const dismissToast = useCallback(() => dispatch({ kind: "dismissToast" }), []);
+  const dismissAlert = useCallback(() => dispatch({ kind: "dismissAlert" }), []);
+  return { state, dismissToast, dismissAlert };
 }
