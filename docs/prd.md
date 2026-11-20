@@ -551,7 +551,7 @@ FR-48 to FR-53 (§4.11); presentation slides; PRD-level UX specification (the UI
 ## 10. Cross-Cutting Non-Functional Requirements
 *Bounds, not adjectives; each with its evidence.*
 
-- **NFR-1 Quality gates.** 134 test cases (101 functions) pass; `ruff` clean; strict TypeScript
+- **NFR-1 Quality gates.** 137 test cases (104 functions) pass; `ruff` clean; strict TypeScript
   build; GitHub Actions runs lint, tests and build on every push and pull request.
 - **NFR-2 Throughput bounds.** 64 KB chunks; 50 MB default size cap; scan work window of 4 ×
   workers (default 4 workers); YARA timeout 10 s. Measured: 12 demo files scan in about 0.1 s.

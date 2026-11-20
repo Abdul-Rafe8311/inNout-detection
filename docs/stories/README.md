@@ -4,7 +4,7 @@ Brownfield story set for the six epics in [`MASTER_PROMPT.md`](../MASTER_PROMPT.
 
 ## Status board
 
-**47 stories:** 35 Done · 4 Partial · 7 Backlog · 1 Won't do. All **101** test functions in `qa_demo/` are cited by at least one acceptance criterion (134 collected cases once parametrization is counted).
+**47 stories:** 35 Done · 4 Partial · 7 Backlog · 1 Won't do. All **104** test functions in `qa_demo/` are cited by at least one acceptance criterion (137 collected cases once parametrization is counted).
 
 | Epic | Stories | Status |
 |---|---|---|
