@@ -30,7 +30,7 @@ So that anyone can clone it, run it and not leak secrets or run unsafe code.
 
 **Given** a fresh clone and the steps in `qa_demo/README.md`  
 **When** I generate the payloads, install and run the checks  
-**Then** all 134 test cases pass, `ruff` is clean and the strict TypeScript build passes  
+**Then** all 137 test cases pass, `ruff` is clean and the strict TypeScript build passes  
 *Verified by:* fresh-clone run recorded in PR #1, the full `pytest` suite
 
 **Given** `CLAUDE.md`  

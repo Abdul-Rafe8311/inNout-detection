@@ -18,7 +18,7 @@ or artifact that proves it**. Where the build falls short of the original specif
 (`docs/MASTER_PROMPT.md`), the FR is kept and marked honestly rather than dropped; see §5 and §9.
 
 Sources of truth: the code under `backend/` and `frontend/`, the tests under `qa_demo/`
-(**134 collected cases from 101 test functions**), and `docs/*.md`. Vocabulary is anchored by the
+(**137 collected cases from 104 test functions**), and `docs/*.md`. Vocabulary is anchored by the
 Glossary (§3); FR, UJ and SM numbers are stable.
 
 ## 1. Vision
@@ -509,7 +509,7 @@ FR-48 to FR-53 (§4.11); presentation slides; PRD-level UX specification (the UI
 - **SM-1 Expected verdicts.** 12 of 12 demo files land in their expected Tier with exactly their
   expected YARA rule; counters read 3 / 2 / 7. Validates FR-6 to FR-15. *(Verified in tests and in a
   fresh-clone run.)*
-- **SM-2 Tests pass everywhere.** 134 collected cases pass locally, in a fresh clone and in GitHub
+- **SM-2 Tests pass everywhere.** 137 collected cases pass locally, in a fresh clone and in GitHub
   Actions; `ruff` clean; strict TypeScript build passes. Validates FR-24, FR-43.
 - **SM-3 Integrity is demonstrable.** The chain verifies after a Scan and reports the exact edited
   index after tampering; Signed Reports verify with all three algorithms and fail after a one-digit
